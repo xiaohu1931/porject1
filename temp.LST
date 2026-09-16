@@ -1,0 +1,110 @@
+C51 COMPILER V9.54   TEMP                                                                  09/06/2026 17:08:47 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE TEMP
+OBJECT MODULE PLACED IN temp.OBJ
+COMPILER INVOKED BY: D:\app\Keil_v5\C51\BIN\C51.EXE temp.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          #include"temp.h"
+   2          
+   3          /*****延时子程序：该延时主要用于ds18b20延时*****/
+   4          void Delay_DS18B20(int num)
+   5          {
+   6   1        while(num--) ;
+   7   1      }
+   8          /*****初始化DS18B20*****/
+   9          void Init_DS18B20(void)
+  10          {
+  11   1        unsigned char x=0;
+  12   1        DQ = 1;         //DQ复位
+  13   1        Delay_DS18B20(8);    //稍做延时
+  14   1        DQ = 0;         //单片机将DQ拉低
+  15   1        Delay_DS18B20(80);   //精确延时，大于480us
+  16   1        DQ = 1;         //拉高总线
+  17   1        Delay_DS18B20(14);
+  18   1        x = DQ;           //稍做延时后，如果x=0则初始化成功，x=1则初始化失败
+  19   1        Delay_DS18B20(20);
+  20   1      }
+  21          /*****读一个字节*****/
+  22          unsigned char ReadOneChar(void)
+  23          {
+  24   1        unsigned char i=0;
+  25   1        unsigned char dat = 0;
+  26   1        for (i=8;i>0;i--)
+  27   1        {
+  28   2          DQ = 0;     // 给脉冲信号
+  29   2          dat>>=1;
+  30   2          DQ = 1;     // 给脉冲信号
+  31   2          if(DQ)
+  32   2          dat|=0x80;
+  33   2          Delay_DS18B20(4);
+  34   2        }
+  35   1        return(dat);
+  36   1      }
+  37          /*****写一个字节*****/
+  38          void WriteOneChar(unsigned char dat)
+  39          {
+  40   1        unsigned char i=0;
+  41   1        for (i=8; i>0; i--)
+  42   1        {
+  43   2          DQ = 0;
+  44   2          DQ = dat&0x01;
+  45   2          Delay_DS18B20(5);
+  46   2          DQ = 1;
+  47   2          dat>>=1;
+  48   2        }
+  49   1      }
+  50          /*****读取温度*****/
+  51          unsigned int ReadTemperature(void)
+  52          {
+  53   1        unsigned char a=0;
+  54   1        unsigned char b=0;
+  55   1        unsigned int t=0;
+C51 COMPILER V9.54   TEMP                                                                  09/06/2026 17:08:47 PAGE 2   
+
+  56   1        float tt=0;
+  57   1        Init_DS18B20();
+  58   1        WriteOneChar(0xCC);  //跳过读序号列号的操作
+  59   1        WriteOneChar(0x44);  //启动温度转换
+  60   1        Init_DS18B20();
+  61   1        WriteOneChar(0xCC);  //跳过读序号列号的操作
+  62   1        WriteOneChar(0xBE);  //读取温度寄存器
+  63   1        a=ReadOneChar();     //读低8位
+  64   1        b=ReadOneChar();    //读高8位
+  65   1        t=b;
+  66   1        t<<=8;
+  67   1        t=t|a;
+  68   1        tt=t*0.0625;
+  69   1        t= tt*100+0.5;     //放大10倍输出并四舍五入
+  70   1        return(t);
+  71   1      }
+  72          //=====================================================================================
+  73          //=====================================================================================
+  74          //=====================================================================================
+  75          
+  76          
+  77          /*****校准温度*****/
+  78          unsigned int check_wendu(void)
+  79          {
+  80   1        unsigned int c;
+  81   1        c=ReadTemperature()-5;        //获取温度值并减去DS18B20的温漂误差
+  82   1        if(c<1) c=0;
+  83   1        if(c>=999) c=999;
+  84   1        return c;
+  85   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    250    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       4
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,200 @@
+C51 COMPILER V9.54   11                                                                    09/07/2026 22:04:40 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE 11
+OBJECT MODULE PLACED IN 11.OBJ
+COMPILER INVOKED BY: D:\app\Keil_v5\C51\BIN\C51.EXE 11.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          #include <reg52.h>
+   2          #include <display.h>
+   3          #include "at24c02.h"
+   4          #include "humi.h"
+   5          
+   6          #define uchar unsigned char
+   7          
+   8          /* 按键引脚定义 */
+   9          sbit Key1 = P2^6;                 // 设置键
+  10          sbit Key2 = P2^7;                 // 加键
+  11          sbit Key3 = P3^7;                 // 减键
+  12          
+  13          /* 温湿度及采样率变量 */
+  14          uchar temperature = 0;
+  15          uchar humidity = 0;
+  16          uchar sample_frequency = 1;
+  17          uchar sample_accumulator = 0;
+  18          uchar blink_ticks = 0;
+  19          
+  20          bit sample_ready = 1;
+  21          bit frequency_visible = 1;
+  22          uchar set = 0;
+  23          
+  24          /* 保存采样率到24C02 */
+  25          void write_eeprom(void)
+  26          {
+  27   1          AT24C02_WriteByte(0, sample_frequency);
+  28   1      }
+  29          
+  30          /* 从24C02读取采样率 */
+  31          void init_eeprom(void)
+  32          {
+  33   1          sample_frequency = AT24C02_ReadByte(0);
+  34   1      
+  35   1          if ((sample_frequency < 1) || (sample_frequency > 10))
+  36   1          {
+  37   2              sample_frequency = 1;
+  38   2              write_eeprom();
+  39   2          }
+  40   1      }
+  41          
+  42          /* 定时器0初始化，定时50ms */
+  43          void init(void)
+  44          {
+  45   1          TMOD = 0x01;
+  46   1          TL0 = 0xb0;
+  47   1          TH0 = 0x3c;
+  48   1          EA = 1;
+  49   1          ET0 = 1;
+  50   1          TR0 = 1;
+  51   1      }
+  52          
+  53          /* 按键扫描 */
+  54          void Key(void)
+  55          {
+C51 COMPILER V9.54   11                                                                    09/07/2026 22:04:40 PAGE 2   
+
+  56   1          /* 进入或退出采样率设置 */
+  57   1          if (Key1 == 0)
+  58   1          {
+  59   2              while (Key1 == 0);
+  60   2      
+  61   2              set++;
+  62   2              frequency_visible = 1;
+  63   2              blink_ticks = 0;
+  64   2      
+  65   2              if (set >= 2)
+  66   2              {
+  67   3                  set = 0;
+  68   3              }
+  69   2      
+  70   2              write_com(0x0c);
+  71   2          }
+  72   1      
+  73   1          /* 增加采样率 */
+  74   1          if ((Key2 == 0) && (set != 0))
+  75   1          {
+  76   2              while (Key2 == 0);
+  77   2      
+  78   2              if (sample_frequency >= 10)
+  79   2              {
+  80   3                  sample_frequency = 1;
+  81   3              }
+  82   2              else
+  83   2              {
+  84   3                  sample_frequency++;
+  85   3              }
+  86   2      
+  87   2              frequency_visible = 1;
+  88   2              blink_ticks = 0;
+  89   2              write_eeprom();
+  90   2          }
+  91   1      
+  92   1          /* 减少采样率 */
+  93   1          if ((Key3 == 0) && (set != 0))
+  94   1          {
+  95   2              while (Key3 == 0);
+  96   2      
+  97   2              if (sample_frequency <= 1)
+  98   2              {
+  99   3                  sample_frequency = 10;
+ 100   3              }
+ 101   2              else
+ 102   2              {
+ 103   3                  sample_frequency--;
+ 104   3              }
+ 105   2      
+ 106   2              frequency_visible = 1;
+ 107   2              blink_ticks = 0;
+ 108   2              write_eeprom();
+ 109   2          }
+ 110   1      }
+ 111          
+ 112          /* 主函数 */
+ 113          void main(void)
+ 114          {
+ 115   1          Init1602();
+ 116   1          init_eeprom();
+ 117   1          init();
+C51 COMPILER V9.54   11                                                                    09/07/2026 22:04:40 PAGE 3   
+
+ 118   1      
+ 119   1          while (1)
+ 120   1          {
+ 121   2              if ((set == 0) && sample_ready)
+ 122   2              {
+ 123   3                  ET0 = 0;
+ 124   3                  SHT11_Read(&temperature, &humidity);
+ 125   3                  ET0 = 1;
+ 126   3                  sample_ready = 0;
+ 127   3              }
+ 128   2      
+ 129   2              Display_1602(temperature, humidity, sample_frequency,
+ 130   2                           (bit)((set != 0) && (!frequency_visible)));
+ 131   2              Key();
+ 132   2          }
+ 133   1      }
+ 134          
+ 135          /* 定时器0中断函数 */
+ 136          void time0_int(void) interrupt 1
+ 137          {
+ 138   1          static uchar count = 0;
+ 139   1      
+ 140   1          TL0 = 0xb0;
+ 141   1          TH0 = 0x3c;
+ 142   1      
+ 143   1          count++;
+ 144   1          if (count >= 1)
+ 145   1          {
+ 146   2              count = 0;
+ 147   2      
+ 148   2              /* 设置状态下控制采样率数字闪烁 */
+ 149   2              if (set != 0)
+ 150   2              {
+ 151   3                  blink_ticks++;
+ 152   3                  if (blink_ticks >= 10)
+ 153   3                  {
+ 154   4                      blink_ticks = 0;
+ 155   4                      frequency_visible = !frequency_visible;
+ 156   4                  }
+ 157   3                  return;
+ 158   3              }
+ 159   2      
+ 160   2              frequency_visible = 1;
+ 161   2              blink_ticks = 0;
+ 162   2      
+ 163   2              /* 根据设置的频率产生采样标志 */
+ 164   2              sample_accumulator += sample_frequency;
+ 165   2              if (sample_accumulator >= 20)
+ 166   2              {
+ 167   3                  sample_accumulator -= 20;
+ 168   3                  sample_ready = 1;
+ 169   3              }
+ 170   2          }
+ 171   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1558    ----
+   CONSTANT SIZE    =     34    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      7      59
+C51 COMPILER V9.54   11                                                                    09/07/2026 22:04:40 PAGE 4   
+
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      2       3
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
